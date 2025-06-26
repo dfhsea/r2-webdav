@@ -188,30 +188,27 @@ function calcContentRange(object: R2ObjectBody) {
 }
 
 async function handle_put(request: Request, bucket: R2Bucket): Promise<Response> {
-	try {
-		if (request.url.endsWith('/')) {
-			return new Response('Method Not Allowed', { status: 405 });
-		}
-
-		let resource_path = make_resource_path(request);
-
-		// Check if the parent directory exists
-		let dirpath = resource_path.split('/').slice(0, -1).join('/');
-		if (dirpath !== '') {
-			let dir = await bucket.head(dirpath);
-			if (!(dir && dir.customMetadata?.resourcetype === '<collection />')) {
-				return new Response('Conflict', { status: 409 });
-			}
-		}
-
-		let body = await request.arrayBuffer();
-		await bucket.put(resource_path, body, {
-			httpMetadata: request.headers,
-		});
-		return new Response('', { status: 201 });
-	} catch (e: any) {
-		return new Response('Internal Error: ' + (e?.message || e), { status: 500 });
+	if (request.url.endsWith('/')) {
+		return new Response('Method Not Allowed', { status: 405 });
 	}
+
+	let resource_path = make_resource_path(request);
+
+	// Check if the parent directory exists
+	let dirpath = resource_path.split('/').slice(0, -1).join('/');
+	if (dirpath !== '') {
+		let dir = await bucket.head(dirpath);
+		if (!(dir && dir.customMetadata?.resourcetype === '<collection />')) {
+			return new Response('Conflict', { status: 409 });
+		}
+	}
+
+	let body = await request.arrayBuffer();
+	await bucket.put(resource_path, body, {
+		onlyIf: request.headers,
+		httpMetadata: request.headers,
+	});
+	return new Response('', { status: 201 });
 }
 
 async function handle_delete(request: Request, bucket: R2Bucket): Promise<Response> {
@@ -224,9 +221,7 @@ async function handle_delete(request: Request, bucket: R2Bucket): Promise<Respon
 			r2_objects = await bucket.list({ cursor: cursor });
 			let keys = r2_objects.objects.map((object) => object.key);
 			if (keys.length > 0) {
-				for (const key of keys) {
-					await bucket.delete(key);
-				}
+				await bucket.delete(keys);
 			}
 
 			if (r2_objects.truncated) {
@@ -255,9 +250,7 @@ async function handle_delete(request: Request, bucket: R2Bucket): Promise<Respon
 		});
 		let keys = r2_objects.objects.map((object) => object.key);
 		if (keys.length > 0) {
-			for (const key of keys) {
-				await bucket.delete(key);
-			}
+			await bucket.delete(keys);
 		}
 
 		if (r2_objects.truncated) {
